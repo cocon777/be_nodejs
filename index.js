@@ -1,48 +1,57 @@
-import express from "express";
-import cors from "cors";
-import models from "./models.js"; // Nhập dữ liệu từ file models.js của bạn
-
+const express = require("express");
 const app = express();
-const PORT = 8080;
+const cors = require("cors");
+const session = require("express-session"); // ← FINAL
+const path = require("path");               // ← FINAL
 
-// Bật CORS để cho phép frontend gọi API[cite: 1]
-app.use(cors());
 
-// 1. API lấy thông tin schema[cite: 2]
-app.get("/test/info", (req, res) => {
-  res.json(models.schemaInfo());
-});
+const dbConnect = require("./db/dbConnect");
+const UserRouter = require("./routes/UserRouter");
+const PhotoRouter = require("./routes/PhotoRouter");
+const AdminRouter = require("./routes/AdminRouter"); // ← FINAL
+// const CommentRouter = require("./routes/CommentRouter");
 
-// 2. API lấy danh sách tất cả người dùng[cite: 2]
-app.get("/user/list", (req, res) => {
-  res.json(models.userListModel());
-});
+dbConnect();
 
-// 3. API lấy chi tiết một người dùng theo ID[cite: 2]
-app.get("/user/:id", (req, res) => {
-  const userId = req.params.id; // Lấy tham số ID từ URL[cite: 1]
-  const user = models.userModel(userId);
+//  CORS — origin: true, credentials: true 
+const corsOptions = {
+  origin: true,        // ←   4
+  credentials: true,   // ←   4
+};
+app.use(cors(corsOptions));
+app.use(express.json());
+app.use("/images", express.static(path.join(__dirname, "images")));   // ← FINAL
 
-  if (user) {
-    res.json(user);
+//  Session middleware — 6 
+app.use(
+  session({
+    secret: "your_secret_key",       // ←   6
+    resave: false,                   // ←   6
+    saveUninitialized: false,        // ←   6
+    cookie: {
+      httpOnly: true,                // ←   6
+      maxAge: 60 * 30 * 1000,        // ←   6 (express-session dùng ms nên × 1000)
+    },
+  })
+);
+
+//  Global auth middleware — kiểm tra session ,8 
+app.use((req, res, next) => {
+  const isAdminRoute   = req.path.startsWith("/admin");
+  const isRegisterUser = req.path === "/api/user" && req.method === "POST";
+
+  if (isAdminRoute || isRegisterUser) return next(); // không cần login
+
+  // 8: if (req.session.userId)
+  if (req.session.userId) {
+    return next();
   } else {
-    res.status(404).send({ message: "Người dùng không tồn tại" });
+    return res.status(401).json({ error: "Unauthorized" });
   }
 });
 
-// 4. API lấy danh sách ảnh của một người dùng theo ID[cite: 2]
-app.get("/photosOfUser/:id", (req, res) => {
-  const userId = req.params.id;
-  const photos = models.photoOfUserModel(userId);
+app.use("/admin",    AdminRouter);
+app.use("/api/user", UserRouter);
+app.use("/api/photo", PhotoRouter);
 
-  if (photos && photos.length > 0) {
-    res.json(photos);
-  } else {
-    res.status(404).send({ message: "Không tìm thấy ảnh cho người dùng này" });
-  }
-});
-
-// Khởi động server[cite: 1]
-app.listen(PORT, () => {
-  console.log(`Backend đang chay tại: http://localhost:${PORT}`);
-});
+app.listen(8081, () => console.log("server listening on port 8081"));

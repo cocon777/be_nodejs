@@ -1,0 +1,84 @@
+Thêm model mới qua Atlas UI rồi kết nối vào BE
+Ví dụ: thêm collection albums
+
+Bước 1 — Tạo collection trên Atlas UI
+Atlas → Cluster0 → photo_sharing_vscode
+→ "+ Create collection"
+→ Nhập tên: albums
+→ Create
+Sau đó có thể thêm document mẫu bằng nút Insert Document:
+json{
+  "title": "Summer 2024",
+  "user_id": "...",
+  "created_at": "2024-06-01"
+}
+
+Bước 2 — Tạo Mongoose Model trong BE
+Tạo file db/albumModel.js:
+jsconst mongoose = require("mongoose");
+
+const albumSchema = new mongoose.Schema({
+  title:      { type: String, required: true },
+  user_id:    { type: mongoose.Schema.Types.ObjectId, ref: "Users" },
+  created_at: { type: Date, default: Date.now }
+});
+
+// Tên model "Albums" phải khớp với tên collection trên Atlas
+// Mongoose tự lowercase + thêm "s": Albums → albums ✅
+module.exports = mongoose.models.Albums || mongoose.model("Albums", albumSchema);
+
+⚠️ Lưu ý tên collection: Mongoose tự chuyển tên model thành lowercase và thêm s. Nếu muốn tên khác, chỉ định thẳng:
+jsmongoose.model("Albums", albumSchema, "albums") // tham số thứ 3
+
+
+Bước 3 — Tạo Router
+Tạo file routes/AlbumRouter.js:
+jsconst express = require("express");
+const mongoose = require("mongoose");
+const Album = require("../db/albumModel");
+const router = express.Router();
+
+// GET /api/album/list
+router.get("/list", async (req, res) => {
+  try {
+    const albums = await Album.find({});
+    res.json(albums);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/album/:id
+router.get("/:id", async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id))
+    return res.status(400).json({ error: "Invalid id" });
+  try {
+    const album = await Album.findById(req.params.id);
+    if (!album) return res.status(404).json({ error: "Not found" });
+    res.json(album);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;
+
+Bước 4 — Đăng ký vào index.js
+jsconst AlbumRouter = require("./routes/AlbumRouter"); // thêm dòng này
+
+app.use("/api/album", AlbumRouter); // thêm dòng này
+
+Bước 5 — Test
+GET http://localhost:8081/api/album/list
+Dữ liệu bạn insert trên Atlas UI sẽ trả về ngay — không cần chạy lại dbLoad.js vì data đã có sẵn trên Atlas.
+
+Tóm tắt flow
+Atlas UI (tạo collection + insert data)
+        ↓
+db/albumModel.js  (định nghĩa schema)
+        ↓
+routes/AlbumRouter.js  (xử lý request)
+        ↓
+index.js  (đăng ký route)
+        ↓
+GET /api/album/list  ✅
